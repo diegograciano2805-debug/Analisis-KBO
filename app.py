@@ -43,7 +43,6 @@ def init_db():
 init_db()
 
 def get_korea_today_date():
-    """Obtiene la fecha actual en Corea del Sur (KST = UTC+9)."""
     kst = timezone(timedelta(hours=9))
     return datetime.now(kst).strftime("%Y-%m-%d")
 
@@ -61,11 +60,11 @@ def predict_endpoint():
 
     if not raw_matches:
         raw_matches = [
-            {"equipo_visitante": "Samsung Lions", "equipo_local": "Kia Tigers", "abridor_visitante": "Won Tae-in", "abridor_local": "James Naile"},
-            {"equipo_visitante": "Lotte Giants", "equipo_local": "SSG Landers", "abridor_visitante": "Charlie Barnes", "abridor_local": "Kim Kwang-hyun"},
-            {"equipo_visitante": "LG Twins", "equipo_local": "Kiwoom Heroes", "abridor_visitante": "Dietrich Enns", "abridor_local": "Ariel Jurado"},
-            {"equipo_visitante": "KT Wiz", "equipo_local": "NC Dinos", "abridor_visitante": "William Cuevas", "abridor_local": "Kyle Hart"},
-            {"equipo_visitante": "Hanwha Eagles", "equipo_local": "Doosan Bears", "abridor_visitante": "Ryu Hyun-jin", "abridor_local": "Gwak Been"}
+            {"equipo_visitante": "Samsung Lions", "equipo_local": "Kia Tigers", "abridor_visitante": "Won Tae-in", "abridor_local": "James Naile", "estado_web": "PROGRAMADO"},
+            {"equipo_visitante": "Lotte Giants", "equipo_local": "SSG Landers", "abridor_visitante": "Charlie Barnes", "abridor_local": "Kim Kwang-hyun", "estado_web": "PROGRAMADO"},
+            {"equipo_visitante": "LG Twins", "equipo_local": "Kiwoom Heroes", "abridor_visitante": "Dietrich Enns", "abridor_local": "Ariel Jurado", "estado_web": "PROGRAMADO"},
+            {"equipo_visitante": "KT Wiz", "equipo_local": "NC Dinos", "abridor_visitante": "William Cuevas", "abridor_local": "Kyle Hart", "estado_web": "PROGRAMADO"},
+            {"equipo_visitante": "Hanwha Eagles", "equipo_local": "Doosan Bears", "abridor_visitante": "Ryu Hyun-jin", "abridor_local": "Gwak Been", "estado_web": "PROGRAMADO"}
         ]
 
     real_scores = fetch_kbo_final_scores(target_date)
@@ -78,14 +77,16 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # Si hay marcadores reales extraídos en la web
-        if partido_key in real_scores:
+        # 1. Verificar si el scraper detectó cancelación directa
+        if match.get("estado_web") == "CANCELADO" or (partido_key in real_scores and real_scores[partido_key].get("cancelado")):
+            estado = "CANCELADO"
+            marcador = "SUSPENDIDO"
+        elif partido_key in real_scores and not real_scores[partido_key].get("cancelado"):
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
             estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
             marcador = f"{score['away_runs']} - {score['home_runs']}"
         elif target_date <= korea_today:
-            # Si el juego es de hoy o días pasados en KST y terminó, generar marcador de evaluación
             seed_hash = int(hashlib.md5(f"{partido_key}{target_date}".encode()).hexdigest(), 16)
             away_runs = (seed_hash % 5) + 2
             home_runs = ((seed_hash >> 3) % 5) + 1
@@ -95,11 +96,10 @@ def predict_endpoint():
             estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
             marcador = f"{away_runs} - {home_runs}"
         else:
-            # Para fechas futuras estrictas en KST
             estado = "PENDIENTE"
             marcador = "vs"
 
-        # Guardar en SQLite
+        # Guardar / Actualizar en BD
         cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (target_date, partido_key))
         cursor.execute("""
             INSERT INTO predictions (
@@ -116,8 +116,9 @@ def predict_endpoint():
             estado, marcador
         ))
 
-        # Enviar tarjeta limpia a la pantalla principal sin insignias
         card_item = dict(pronostico)
+        card_item['estado'] = estado
+        card_item['resultado_carreras'] = marcador
         processed_matches.append(card_item)
 
     conn.commit()
@@ -164,7 +165,6 @@ def history_endpoint():
     cursor.execute("""
         SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
         FROM predictions 
-        WHERE estado IN ('GANADA', 'PERDIDA')
         ORDER BY fecha DESC, id DESC
     """)
     rows = cursor.fetchall()

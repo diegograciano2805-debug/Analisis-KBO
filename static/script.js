@@ -28,6 +28,8 @@ async function abrirHistorial() {
                     estadoTag = `<strong style="color:#2e7d32;">✔ GANADA</strong>`;
                 } else if (h.estado === 'PERDIDA') {
                     estadoTag = `<strong style="color:#d32f2f;">✖ PERDIDA</strong>`;
+                } else if (h.estado === 'CANCELADO') {
+                    estadoTag = `<strong style="color:#d97706;">⚠️ CANCELADO</strong>`;
                 }
 
                 tr.innerHTML = `
@@ -86,13 +88,19 @@ async function cargarPronosticos() {
                 const probLocalPct = (probLocal * 100).toFixed(1);
                 const probAwayPct = ((1 - probLocal) * 100).toFixed(1);
 
-                const ganador = p.favorito_pronostico ?? p.prediccion_ganador ?? (probLocal >= 0.5 ? p.equipo_local : p.equipo_visitante);
+                const ganador = p.favorito_pronostico ?? (probLocal >= 0.5 ? p.equipo_local : p.equipo_visitante);
                 const recOU = p.recomendacion_ou || "Over 8.5";
                 const recRL = p.recomendacion_runline || "N/A";
                 const stake = p.stake_sugerido || "1.5%";
                 const momio = p.momio_decimal ? Number(p.momio_decimal).toFixed(2) : "1.90";
                 const ev = p.ev_label || "+0.0% EV";
                 const isPositiveEV = ev.includes('+');
+
+                const estado = p.estado || 'PENDIENTE';
+                let estadoBadge = '';
+                if (estado === 'CANCELADO') {
+                    estadoBadge = `<div style="text-align:center; margin-bottom:0.4rem;"><span style="background:#d97706; color:white; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">⚠️ PARTIDO CANCELADO / APLAZADO</span></div>`;
+                }
 
                 const card = document.createElement('div');
                 card.className = 'game-card';
@@ -103,6 +111,8 @@ async function cargarPronosticos() {
                         <span class="vs-badge">VS</span>
                         <span>${p.equipo_local}</span>
                     </div>
+
+                    ${estadoBadge}
 
                     <div class="prob-container" style="margin: 0.6rem 0 1rem 0;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #8b949e; margin-bottom: 0.3rem;">
@@ -234,7 +244,7 @@ async function sendMessage() {
     messages.appendChild(botMsg);
 
     try {
-        const response = await fetch('/api/chat', {
+        response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text, fecha: fecha })
@@ -252,4 +262,4 @@ function handleKeyPress(e) {
     if (e.key === 'Enter') sendMessage();
 }
 
-document.addEventListener('DOMContentLoaded', cargarPronosticos); 
+document.addEventListener('DOMContentLoaded', cargarPronosticos);
