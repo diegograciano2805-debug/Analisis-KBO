@@ -101,9 +101,11 @@ async function cargarPronosticos() {
         if (data.partidos && data.partidos.length > 0) {
             currentMatchesData = data.partidos;
             data.partidos.forEach((p, index) => {
-                const prob = p.probabilidad_local ?? 0.5;
-                const probPct = (prob * 100).toFixed(1);
-                const ganador = p.favorito_pronostico ?? p.prediccion_ganador ?? (prob >= 0.5 ? p.equipo_local : p.equipo_visitante);
+                const probLocal = p.probabilidad_local ?? 0.5;
+                const probLocalPct = (probLocal * 100).toFixed(1);
+                const probAwayPct = ((1 - probLocal) * 100).toFixed(1);
+
+                const ganador = p.favorito_pronostico ?? p.prediccion_ganador ?? (probLocal >= 0.5 ? p.equipo_local : p.equipo_visitante);
                 const recOU = p.recomendacion_ou || "Over 8.5";
                 const recRL = p.recomendacion_runline || "N/A";
                 const stake = p.stake_sugerido || "1.5%";
@@ -131,13 +133,14 @@ async function cargarPronosticos() {
 
                     ${estadoBadge}
 
-                    <div class="prob-container">
-                        <div style="display: flex; justify-content: space-between; font-size: 0.85rem; color: #8b949e;">
-                            <span>Probabilidad ${p.equipo_local}:</span>
-                            <strong style="color: #f0f3f6;">${probPct}%</strong>
+                    <div class="prob-container" style="margin: 0.6rem 0 1rem 0;">
+                        <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #8b949e; margin-bottom: 0.3rem;">
+                            <span>${p.equipo_visitante} <strong style="color: #58a6ff;">${probAwayPct}%</strong></span>
+                            <span><strong style="color: #3fb950;">${probLocalPct}%</strong> ${p.equipo_local}</span>
                         </div>
-                        <div class="prob-bar-bg">
-                            <div class="prob-bar-fill" style="width: ${probPct}%;"></div>
+                        <div style="background: #21262d; height: 8px; border-radius: 4px; overflow: hidden; display: flex;">
+                            <div style="width: ${probAwayPct}%; background: #1f6beb;"></div>
+                            <div style="width: ${probLocalPct}%; background: #238636;"></div>
                         </div>
                     </div>
 
