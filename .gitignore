@@ -1,4 +1,3 @@
 __pycache__/
 *.pyc
 .env
-kbo_predictions.db

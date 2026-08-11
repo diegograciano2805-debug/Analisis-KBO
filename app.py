@@ -70,7 +70,6 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # Evaluar resultado si existe en la web
         if partido_key in real_scores:
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
@@ -78,9 +77,8 @@ def predict_endpoint():
             marcador = f"{score['away_runs']} - {score['home_runs']}"
         else:
             estado = "PENDIENTE"
-            marcador = "N/A"
+            marcador = "Pendiente"
 
-        # Guardar / Actualizar en SQLite en la tabla predictions
         cursor.execute("""
             INSERT INTO predictions (
                 fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
@@ -99,9 +97,9 @@ def predict_endpoint():
             estado, marcador
         ))
 
-        # En la respuesta de las tarjetas de pantalla principal mantendremos el estado limpio
         pronostico_card = dict(pronostico)
-        pronostico_card['estado'] = 'PENDIENTE'
+        pronostico_card['estado'] = estado
+        pronostico_card['resultado_carreras'] = marcador
         processed_matches.append(pronostico_card)
 
     conn.commit()
@@ -149,7 +147,6 @@ def history_endpoint():
     cursor.execute("""
         SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
         FROM predictions 
-        WHERE estado IN ('GANADA', 'PERDIDA') 
         ORDER BY fecha DESC, id DESC
     """)
     rows = cursor.fetchall()
