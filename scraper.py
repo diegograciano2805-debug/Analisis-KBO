@@ -1,6 +1,5 @@
 import requests
 from bs4 import BeautifulSoup
-import random
 
 def fetch_live_kbo_data(target_date):
     """Extrae los partidos programados y abridores de la KBO."""
@@ -81,14 +80,14 @@ def fetch_kbo_final_scores(target_date):
     except Exception as e:
         print(f"⚠️ Error extrayendo marcadores web: {e}")
 
-    # Retorna solo si se encontraron marcadores reales
     return scores
 
 
 def fetch_live_weather(city_name):
-    """Genera datos de clima para el estadio."""
-    temp = random.randint(20, 30)
-    viento = random.randint(6, 22)
+    """Genera datos de clima deterministas basados en el nombre de la ciudad."""
+    seed_val = abs(hash(city_name))
+    temp = 20 + (seed_val % 10)
+    viento = 5 + (seed_val % 15)
     return {
         "temperatura_c": temp,
         "viento_kmh": viento

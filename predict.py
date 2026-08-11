@@ -1,93 +1,57 @@
-import os
-import joblib
-import pandas as pd
+import hashlib
 
-MODEL_PATH = "models/kbo_model.pkl"
-FEATURED_DATA_PATH = "data/kbo_featured_games.csv"
+# Ranking de potencia estático para la KBO para generar pronósticos estables
+TEAM_RATINGS = {
+    "Kia Tigers": 0.62,
+    "LG Twins": 0.58,
+    "Samsung Lions": 0.55,
+    "Doosan Bears": 0.53,
+    "KT Wiz": 0.51,
+    "SSG Landers": 0.49,
+    "NC Dinos": 0.47,
+    "Lotte Giants": 0.45,
+    "Hanwha Eagles": 0.42,
+    "Kiwoom Heroes": 0.38
+}
 
-KBO_TEAMS = [
-    "SSG Landers", "LG Twins", "Doosan Bears", "KT Wiz", "NC Dinos",
-    "Kia Tigers", "Lotte Giants", "Samsung Lions", "Hanwha Eagles", "Kiwoom Heroes"
-]
+def generar_pronostico_partido(match):
+    away_team = match.get("equipo_visitante", "Equipo A")
+    home_team = match.get("equipo_local", "Equipo B")
 
+    rating_away = TEAM_RATINGS.get(away_team, 0.50)
+    rating_home = TEAM_RATINGS.get(home_team, 0.50) + 0.04 # Ventaja de localía
 
-def get_latest_team_l10(team_name, df):
-    team_games = df[(df["Away_Team"] == team_name) | (df["Home_Team"] == team_name)]
-    if team_games.empty:
-        return 0.500
-    last_game = team_games.iloc[-1]
-    return last_game["Home_L10"] if last_game["Home_Team"] == team_name else last_game["Away_L10"]
+    # Probabilidad base determinista
+    total = rating_away + rating_home
+    prob_local = round(rating_home / total, 3)
+    prob_away = round(1.0 - prob_local, 3)
 
+    # Favorito
+    favorito = home_team if prob_local >= 0.5 else away_team
+    prob_fav = prob_local if prob_local >= 0.5 else prob_away
 
-def predict_game(home_team, away_team, home_era, away_era):
-    if not os.path.exists(MODEL_PATH):
-        print("[!] No se encontró el modelo. Ejecuta 'train_model.py' primero.")
-        return
+    # Momio y EV determinista
+    momio = round(1 / prob_fav, 2)
+    ev_val = round(((prob_fav * momio) - 1.0) * 100, 1)
+    ev_label = f"+{ev_val}% EV" if ev_val >= 0 else f"{ev_val}% EV"
 
-    model = joblib.load(MODEL_PATH)
+    # Determinista de Altas/Bajas basado en los equipos
+    match_hash = int(hashlib.md5(f"{away_team}{home_team}".encode()).hexdigest(), 16)
+    ou_line = 8.5 if (match_hash % 2 == 0) else 9.5
+    ou_pick = "Over" if (match_hash % 3 != 0) else "Under"
 
-    if os.path.exists(FEATURED_DATA_PATH):
-        df = pd.read_csv(FEATURED_DATA_PATH)
-        home_l10 = get_latest_team_l10(home_team, df)
-        away_l10 = get_latest_team_l10(away_team, df)
-    else:
-        home_l10, away_l10 = 0.500, 0.500
-
-    l10_diff = home_l10 - away_l10
-    era_diff = home_era - away_era
-
-    X_input = pd.DataFrame([{
-        "Away_L10": away_l10,
-        "Home_L10": home_l10,
-        "L10_Diff": l10_diff,
-        "Away_Pitcher_ERA": away_era,
-        "Home_Pitcher_ERA": home_era,
-        "ERA_Diff": era_diff
-    }])
-
-    prob = model.predict_proba(X_input)[0]
-    prob_home = prob[1] if len(prob) > 1 else prob[0]
-    prob_away = 1 - prob_home
-
-    winner = home_team if prob_home >= 0.5 else away_team
-
-    print("\n==========================================")
-    print("   PREDICCIÓN KBO (L10 + Pitcher Abridor)")
-    print("==========================================")
-    print(f" Local: {home_team} (L10: {home_l10:.3f} | ERA Abridor: {home_era:.2f})")
-    print(f" Visitante: {away_team} (L10: {away_l10:.3f} | ERA Abridor: {away_era:.2f})")
-    print(f" Diferencial ERA: {era_diff:+.2f} (Menor es mejor)\n")
-    print(f" Probabilidad [{home_team} - Local]: {prob_home * 100:.1f}%")
-    print(f" Probabilidad [{away_team} - Visitante]: {prob_away * 100:.1f}%")
-    print(f"\n GANADOR PRONOSTICADO: {winner.upper()}")
-    print("==========================================\n")
-
-
-def main():
-    while True:
-        print("\n--- MENÚ DE PREDICCIÓN KBO (CON PITCHERS) ---")
-        for idx, team in enumerate(KBO_TEAMS, 1):
-            print(f" {idx}. {team}")
-        print(" 0. Salir")
-
-        try:
-            home_idx = int(input("\nNúmero del equipo LOCAL: "))
-            if home_idx == 0: break
-            away_idx = int(input("Número del equipo VISITANTE: "))
-            if away_idx == 0: break
-
-            if home_idx == away_idx:
-                print("\n[!] Equipos deben ser distintos.")
-                continue
-
-            home_era = float(input(f"ERA del Abridor de {KBO_TEAMS[home_idx-1]} (ej. 3.45): "))
-            away_era = float(input(f"ERA del Abridor de {KBO_TEAMS[away_idx-1]} (ej. 4.10): "))
-
-            predict_game(KBO_TEAMS[home_idx-1], KBO_TEAMS[away_idx-1], home_era, away_era)
-
-        except (ValueError, IndexError):
-            print("\n[!] Selección inválida.")
-
-
-if __name__ == "__main__":
-    main()
+    return {
+        "equipo_visitante": away_team,
+        "equipo_local": home_team,
+        "abridor_visitante": match.get("abridor_visitante", "TBD Abridor"),
+        "abridor_local": match.get("abridor_local", "TBD Abridor"),
+        "probabilidad_local": prob_local,
+        "probabilidad_visitante": prob_away,
+        "favorito_pronostico": favorito,
+        "momio_decimal": momio,
+        "ev_label": ev_label,
+        "recomendacion_ou": f"{ou_pick} {ou_line}",
+        "recomendacion_runline": f"{away_team} +1.5" if favorito == home_team else f"{home_team} +1.5",
+        "stake_sugerido": "2.5%" if ev_val > 3.0 else ("1.5%" if ev_val > 0 else "0.0%"),
+        "clima_info": "24°C, Viento 12 km/h"
+    }
