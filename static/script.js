@@ -9,7 +9,7 @@ async function cargarMetricas() {
         document.getElementById('stat-evaluados').innerText = data.partidos_evaluados || '0';
         document.getElementById('stat-record').innerText = `${data.ganadas || 0}G - ${data.perdidas || 0}P`;
     } catch (e) {
-        console.error("Error al cargar métricas de la barra superior:", e);
+        console.error("Error al cargar métricas:", e);
     }
 }
 
@@ -25,9 +25,9 @@ async function abrirHistorial() {
                 const tr = document.createElement('tr');
                 let estadoTag = `<span style="color:#8b949e;">PENDIENTE</span>`;
                 if (h.estado === 'GANADA') {
-                    estadoTag = `<strong style="color:#2e7d32;">✔ GANADA</strong>`;
+                    estadoTag = `<strong style="color:#2e7d32;">✔ ACERTADA</strong>`;
                 } else if (h.estado === 'PERDIDA') {
-                    estadoTag = `<strong style="color:#d32f2f;">✖ PERDIDA</strong>`;
+                    estadoTag = `<strong style="color:#d32f2f;">✖ NO ACERTADA</strong>`;
                 } else if (h.estado === 'CANCELADO') {
                     estadoTag = `<strong style="color:#d97706;">⚠️ CANCELADO</strong>`;
                 }
@@ -37,14 +37,14 @@ async function abrirHistorial() {
                     <td>${h.partido}</td>
                     <td><strong>${h.favorito_pronostico}</strong></td>
                     <td>@${h.momio_decimal ? Number(h.momio_decimal).toFixed(2) : '1.90'}</td>
-                    <td>${h.stake_sugerido}</td>
+                    <td>${h.stake_sugerido} de tu dinero</td>
                     <td>${h.resultado_carreras || 'N/A'}</td>
                     <td>${estadoTag}</td>
                 `;
                 tbody.appendChild(tr);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros de partidos jugados y finalizados aún.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros de partidos finalizados aún.</td></tr>';
         }
 
         document.getElementById('history-modal').classList.remove('hidden');
@@ -96,10 +96,13 @@ async function cargarPronosticos() {
                 const ev = p.ev_label || "+0.0% EV";
                 const isPositiveEV = ev.includes('+');
 
+                // Traducción de Conveniencia
+                const convenienciaTexto = isPositiveEV ? "SÍ CONVIENE (+Ventaja)" : "NO CONVIENE (Riesgo alto)";
+
                 const estado = p.estado || 'PENDIENTE';
                 let estadoBadge = '';
                 if (estado === 'CANCELADO') {
-                    estadoBadge = `<div style="text-align:center; margin-bottom:0.4rem;"><span style="background:#d97706; color:white; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">⚠️ PARTIDO CANCELADO / APLAZADO</span></div>`;
+                    estadoBadge = `<div style="text-align:center; margin-bottom:0.4rem;"><span style="background:#d97706; color:white; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">⚠️ PARTIDO CANCELADO / POSPUESTO</span></div>`;
                 }
 
                 const card = document.createElement('div');
@@ -127,24 +130,24 @@ async function cargarPronosticos() {
 
                     <div class="bet-options">
                         <div class="badge">
-                            <span>Moneyline (@${momio}):</span>
+                            <span>Equipo a Ganar (@${momio}):</span>
                             <strong>${ganador}</strong>
                         </div>
                         <div class="badge">
-                            <span>Valor Esperado:</span>
-                            <strong style="color: ${isPositiveEV ? '#2e7d32' : '#d32f2f'};">${ev}</strong>
+                            <span>¿Conviene Apostar?:</span>
+                            <strong style="color: ${isPositiveEV ? '#2e7d32' : '#d32f2f'};">${convenienciaTexto}</strong>
                         </div>
                         <div class="badge">
-                            <span>Altas/Bajas:</span>
+                            <span>Total de Carreras:</span>
                             <strong>${recOU}</strong>
                         </div>
                         <div class="badge">
-                            <span>Runline:</span>
+                            <span>Ventaja de Carreras:</span>
                             <strong>${recRL}</strong>
                         </div>
                         <div class="badge" style="border-color: #2e7d32;">
-                            <span style="color: #8b949e;">Apuesta Sugerida:</span>
-                            <strong style="color: #2e7d32;">${stake} Bankroll</strong>
+                            <span style="color: #8b949e;">Inversión Recomendada:</span>
+                            <strong style="color: #2e7d32;">${stake} de tu Dinero</strong>
                         </div>
                     </div>
                 `;
@@ -166,7 +169,7 @@ function openModal(index) {
     const p = currentMatchesData[index];
     if (!p) return;
 
-    document.getElementById('modal-title').innerText = `${p.equipo_visitante} @ ${p.equipo_local}`;
+    document.getElementById('modal-title').innerText = `${p.equipo_visitante} vs ${p.equipo_local}`;
     
     const body = document.getElementById('modal-body');
     body.innerHTML = `
@@ -176,36 +179,31 @@ function openModal(index) {
         <table>
             <thead>
                 <tr>
-                    <th>Métrica / Factor</th>
+                    <th>Factor Analizado</th>
                     <th>Valor Calculado</th>
-                    <th>Efecto en el Modelo</th>
+                    <th>Efecto en la Pronóstico</th>
                 </tr>
             </thead>
             <tbody>
                 <tr>
-                    <td>Diferencial FIP (Pitching)</td>
-                    <td>-0.42 (Favorece ${p.equipo_local})</td>
-                    <td><span style="color: #2e7d32;">+4.5% Prob</span></td>
+                    <td>Calidad de Picheo Abridor</td>
+                    <td>Favorece a ${p.equipo_local}</td>
+                    <td><span style="color: #2e7d32;">+4.5% Probabilidad</span></td>
                 </tr>
                 <tr>
-                    <td>Diferencial wOBA (Bateo)</td>
-                    <td>+0.024 OPS Ajustado</td>
-                    <td><span style="color: #2e7d32;">+3.1% Prob</span></td>
+                    <td>Poder de Bateo del Equipo</td>
+                    <td>Rendimiento Alto</td>
+                    <td><span style="color: #2e7d32;">+3.1% Probabilidad</span></td>
                 </tr>
                 <tr>
-                    <td>Factor de Parque</td>
-                    <td>${p.equipo_local === 'SSG Landers' ? '1.12 (Bateador)' : '0.96 (Neutral)'}</td>
-                    <td>Ajusta Over/Under</td>
-                </tr>
-                <tr>
-                    <td>Vigorish / Cuota Implícita</td>
-                    <td>${p.momio_decimal || 1.90}</td>
-                    <td>Determina ${p.ev_label || '+0.0% EV'}</td>
+                    <td>Factor del Estadio</td>
+                    <td>${p.equipo_local === 'SSG Landers' ? 'Estadio de Bateadores' : 'Estadio Neutral'}</td>
+                    <td>Ajusta Puntos Totales</td>
                 </tr>
             </tbody>
         </table>
         <div style="margin-top: 1.2rem; background: #161b22; padding: 0.8rem; border-radius: 6px; border: 1px solid #262c36; font-size: 0.8rem; color: #8b949e;">
-            💡 <strong>Análisis Técnico:</strong> El modelo detecta ventaja en el picheo abridor mediante FIP independiente de la defensa. Se recomienda mantener el stake sugerido del ${p.stake_sugerido || '1.5%'}.
+            💡 <strong>Resumen Simplificado:</strong> El modelo analiza el rendimiento de los lanzadores abridores y el historial del equipo. Se sugiere invertir como máximo el ${p.stake_sugerido || '1.5%'} de tu presupuesto total.
         </div>
     `;
 
@@ -240,11 +238,11 @@ async function sendMessage() {
 
     const botMsg = document.createElement('div');
     botMsg.className = 'message bot-message';
-    botMsg.innerText = "Analizando combinación de parlays...";
+    botMsg.innerText = "Analizando partido...";
     messages.appendChild(botMsg);
 
     try {
-        response = await fetch('/api/chat', {
+        const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: text, fecha: fecha })
