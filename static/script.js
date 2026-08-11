@@ -42,7 +42,7 @@ async function abrirHistorial() {
                 tbody.appendChild(tr);
             });
         } else {
-            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros de apuestas guardadas aún.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;">No hay registros de partidos jugados y finalizados aún.</td></tr>';
         }
 
         document.getElementById('history-modal').classList.remove('hidden');
@@ -94,14 +94,6 @@ async function cargarPronosticos() {
                 const ev = p.ev_label || "+0.0% EV";
                 const isPositiveEV = ev.includes('+');
 
-                const estado = p.estado || 'PENDIENTE';
-                let estadoBadge = '';
-                if (estado === 'GANADA') {
-                    estadoBadge = `<div style="text-align:center; margin-bottom:0.4rem;"><span style="background:#2e7d32; color:white; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">✔ GANADA (${p.resultado_carreras})</span></div>`;
-                } else if (estado === 'PERDIDA') {
-                    estadoBadge = `<div style="text-align:center; margin-bottom:0.4rem;"><span style="background:#d32f2f; color:white; padding:0.25rem 0.6rem; border-radius:4px; font-size:0.75rem; font-weight:bold;">✖ PERDIDA (${p.resultado_carreras})</span></div>`;
-                }
-
                 const card = document.createElement('div');
                 card.className = 'game-card';
                 card.onclick = () => openModal(index);
@@ -111,8 +103,6 @@ async function cargarPronosticos() {
                         <span class="vs-badge">VS</span>
                         <span>${p.equipo_local}</span>
                     </div>
-
-                    ${estadoBadge}
 
                     <div class="prob-container" style="margin: 0.6rem 0 1rem 0;">
                         <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: #8b949e; margin-bottom: 0.3rem;">
@@ -154,7 +144,6 @@ async function cargarPronosticos() {
             container.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">No hay partidos programados para esta fecha.</p>';
         }
 
-        // Cargar inmediatamente las métricas superiores desde SQLite
         await cargarMetricas();
 
     } catch (error) {
