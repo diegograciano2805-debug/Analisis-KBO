@@ -34,7 +34,7 @@ async function abrirHistorial() {
                     <td>${h.fecha}</td>
                     <td>${h.partido}</td>
                     <td><strong>${h.favorito_pronostico}</strong></td>
-                    <td>@${h.momio_decimal ? h.momio_decimal.toFixed(2) : '1.90'}</td>
+                    <td>@${h.momio_decimal ? Number(h.momio_decimal).toFixed(2) : '1.90'}</td>
                     <td>${h.stake_sugerido}</td>
                     <td>${h.resultado_carreras || 'N/A'}</td>
                     <td>${estadoTag}</td>
@@ -61,23 +61,6 @@ function cerrarHistorialModal(event) {
     }
 }
 
-async function sincronizarResultados() {
-    const fecha = document.getElementById('game-date').value;
-    try {
-        const res = await fetch('/api/sync-results', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fecha: fecha })
-        });
-        const data = await res.json();
-        
-        await cargarPronosticos();
-        await cargarMetricas();
-    } catch (e) {
-        console.error("Error al sincronizar resultados:", e);
-    }
-}
-
 async function cargarPronosticos() {
     const fecha = document.getElementById('game-date').value;
     const container = document.getElementById('games-container');
@@ -85,8 +68,6 @@ async function cargarPronosticos() {
 
     loading.classList.remove('hidden');
     container.innerHTML = '';
-
-    await cargarMetricas();
 
     try {
         const response = await fetch('/api/predict', {
@@ -109,7 +90,7 @@ async function cargarPronosticos() {
                 const recOU = p.recomendacion_ou || "Over 8.5";
                 const recRL = p.recomendacion_runline || "N/A";
                 const stake = p.stake_sugerido || "1.5%";
-                const momio = p.momio_decimal ? p.momio_decimal.toFixed(2) : "1.90";
+                const momio = p.momio_decimal ? Number(p.momio_decimal).toFixed(2) : "1.90";
                 const ev = p.ev_label || "+0.0% EV";
                 const isPositiveEV = ev.includes('+');
 
@@ -172,6 +153,10 @@ async function cargarPronosticos() {
         } else {
             container.innerHTML = '<p style="text-align:center; grid-column: 1/-1;">No hay partidos programados para esta fecha.</p>';
         }
+
+        // Cargar inmediatamente las métricas superiores desde SQLite
+        await cargarMetricas();
+
     } catch (error) {
         console.error("Error cargando pronósticos:", error);
         loading.innerHTML = "Error al conectar con el servidor.";
@@ -187,7 +172,7 @@ function openModal(index) {
     const body = document.getElementById('modal-body');
     body.innerHTML = `
         <div style="margin-bottom: 1rem; font-size: 0.85rem; color: #8b949e;">
-            Clima estimado: <strong style="color: #f0f3f6;">${p.clima_info || '25°C, 10 km/h'}</strong>
+            Clima estimado: <strong style="color: #f0f3f6;">${p.clima_info || '24°C, 12 km/h'}</strong>
         </div>
         <table>
             <thead>
@@ -210,7 +195,7 @@ function openModal(index) {
                 </tr>
                 <tr>
                     <td>Factor de Parque</td>
-                    <td>${p.equipo_local == 'SSG Landers' ? '1.12 (Bateador)' : '0.96 (Neutral)'}</td>
+                    <td>${p.equipo_local === 'SSG Landers' ? '1.12 (Bateador)' : '0.96 (Neutral)'}</td>
                     <td>Ajusta Over/Under</td>
                 </tr>
                 <tr>
@@ -266,7 +251,7 @@ async function sendMessage() {
             body: JSON.stringify({ message: text, fecha: fecha })
         });
         const data = await response.json();
-        botMsg.innerHTML = marked.parse(data.response);
+        botMsg.innerHTML = typeof marked !== 'undefined' ? marked.parse(data.response) : data.response;
     } catch (err) {
         botMsg.innerText = "Error al obtener respuesta del asistente.";
     }
