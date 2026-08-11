@@ -1,0 +1,7 @@
+Flask
+pandas
+numpy
+groq
+beautifulsoup4
+requests
+gunicorn

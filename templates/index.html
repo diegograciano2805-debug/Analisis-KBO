@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KBO AI Analytics & Betting Predictor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+    <header class="navbar">
+        <div class="logo">
+            <span class="logo-icon"></span>
+            <h1>KBO AI Predictor</h1>
+        </div>
+        <div class="date-picker-wrapper">
+            <label for="game-date">Fecha:</label>
+            <input type="date" id="game-date" value="2026-08-11">
+            <button onclick="cargarPronosticos()" class="btn-primary">Procesar Partidos</button>
+            <button onclick="sincronizarResultados()" class="btn-secondary" style="background:#21262d; border:1px solid #262c36; color:#f0f3f6; padding:0.45rem 0.8rem; border-radius:6px; font-weight:600; font-size:0.85rem; cursor:pointer;">Sincronizar Resultados</button>
+            <button onclick="abrirHistorial()" class="btn-secondary" style="background:#2e7d32; border:1px solid #2e7d32; color:#ffffff; padding:0.45rem 0.8rem; border-radius:6px; font-weight:600; font-size:0.85rem; cursor:pointer;">Historial</button>
+        </div>
+    </header>
+
+    <!-- Barra de Tracking de Rendimiento (ROI / Aciertos) -->
+    <div class="stats-bar">
+        <div class="stat-item">
+            <span>Precisión Modelo:</span>
+            <strong id="stat-precision">0.0%</strong>
+        </div>
+        <div class="stat-item">
+            <span>ROI Acumulado:</span>
+            <strong id="stat-roi" style="color: #2e7d32;">+0.0%</strong>
+        </div>
+        <div class="stat-item">
+            <span>Partidos Evaluados:</span>
+            <strong id="stat-evaluados">0</strong>
+        </div>
+        <div class="stat-item">
+            <span>Récord (G - P):</span>
+            <strong id="stat-record">0G - 0P</strong>
+        </div>
+    </div>
+
+    <main class="dashboard-layout">
+        <section class="main-content">
+            <div class="dashboard-header">
+                <h2>Cartelera & Análisis de Apuestas</h2>
+                <p>Haz clic en cualquier tarjeta para ver el desglose estadístico detallado.</p>
+            </div>
+
+            <div id="loading" class="loading-spinner hidden">
+                <div class="spinner"></div>
+                <p>Calculando métricas y ejecutando simulación...</p>
+            </div>
+
+            <div id="games-container" class="games-grid">
+                <!-- Tarjetas -->
+            </div>
+        </section>
+
+        <aside class="sidebar-chat">
+            <div class="chat-panel">
+                <div class="chat-panel-header">
+                    <span>Asistente IA & Parlays</span>
+                </div>
+                <div id="chat-messages" class="chat-messages">
+                    <div class="message bot-message">
+                        ¡Hola! Soy tu analista de la KBO. Pídeme recomendaciones de <strong>parlays</strong> o combinadas y te armaré una tabla detallada.
+                    </div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chat-input" placeholder="Ej: Armame un parlay de 3 picks..." onkeypress="handleKeyPress(event)">
+                    <button onclick="sendMessage()" class="btn-send">Enviar</button>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- Modal Emergente de Desglose Estadístico -->
+    <div id="match-modal" class="modal-backdrop hidden" onclick="closeModal(event)">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3 id="modal-title">Desglose del Partido</h3>
+                <button onclick="closeModalDirect()" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Contenido dinámico -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Emergente de Historial -->
+    <div id="history-modal" class="modal-backdrop hidden" onclick="cerrarHistorialModal(event)">
+        <div class="modal-content" style="max-width: 800px; width: 95%;" onclick="event.stopPropagation()">
+            <div class="modal-header">
+                <h3>Historial Completo de Apuestas</h3>
+                <button onclick="cerrarHistorial()" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height: 450px; overflow-y: auto;">
+                <table style="width: 100%; font-size: 0.82rem;">
+                    <thead>
+                        <tr style="background-color: #21262d;">
+                            <th>Fecha</th>
+                            <th>Partido</th>
+                            <th>Pick Favorito</th>
+                            <th>Momio</th>
+                            <th>Stake</th>
+                            <th>Resultado Real</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-table-body">
+                        <!-- Filas dinámicas -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
