@@ -13,30 +13,32 @@ client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 DB_FILE = "kbo_predictions.db"
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS predictions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            fecha TEXT,
-            partido TEXT,
-            equipo_local TEXT,
-            equipo_visitante TEXT,
-            favorito_pronostico TEXT,
-            probabilidad_local REAL,
-            recomendacion_ou TEXT,
-            recomendacion_runline TEXT,
-            stake_sugerido TEXT,
-            clima_info TEXT,
-            momio_decimal REAL,
-            ev_label TEXT,
-            estado TEXT DEFAULT 'PENDIENTE',
-            resultado_carreras TEXT DEFAULT 'N/A',
-            UNIQUE(fecha, partido)
-        )
-    """)
-    conn.commit()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS predictions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                fecha TEXT,
+                partido TEXT,
+                equipo_local TEXT,
+                equipo_visitante TEXT,
+                favorito_pronostico TEXT,
+                probabilidad_local REAL,
+                recomendacion_ou TEXT,
+                recomendacion_runline TEXT,
+                stake_sugerido TEXT,
+                clima_info TEXT,
+                momio_decimal REAL,
+                ev_label TEXT,
+                estado TEXT DEFAULT 'PENDIENTE',
+                resultado_carreras TEXT DEFAULT 'N/A'
+            )
+        """)
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error inicializando BD: {e}")
 
 init_db()
 
@@ -62,61 +64,87 @@ def predict_endpoint():
 
     real_scores = fetch_kbo_final_scores(target_date)
 
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
     processed_matches = []
-    for match in raw_matches:
-        pronostico = generar_pronostico_partido(match)
-        partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
-        
-        if partido_key in real_scores:
-            score = real_scores[partido_key]
-            ganador_real = score["ganador_real"]
-            estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
-            marcador = f"{score['away_runs']} - {score['home_runs']}"
-        else:
-            estado = "PENDIENTE"
-            marcador = "Pendiente"
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
 
-        cursor.execute("""
-            INSERT INTO predictions (
-                fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
-                probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
-                clima_info, momio_decimal, ev_label, estado, resultado_carreras
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(fecha, partido) DO UPDATE SET
-                estado = excluded.estado,
-                resultado_carreras = excluded.resultado_carreras
-        """, (
-            target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
-            pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
-            pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
-            pronostico['stake_sugerido'], pronostico['clima_info'],
-            pronostico['momio_decimal'], pronostico['ev_label'],
-            estado, marcador
-        ))
+        for match in raw_matches:
+            pronostico = generar_pronostico_partido(match)
+            partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
+            
+            if partido_key in real_scores:
+                score = real_scores[partido_key]
+                ganador_real = score["ganador_real"]
+                estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
+                marcador = f"{score['away_runs']} - {score['home_runs']}"
+            else:
+                estado = "PENDIENTE"
+                marcador = "Pendiente"
 
-        pronostico_card = dict(pronostico)
-        pronostico_card['estado'] = estado
-        pronostico_card['resultado_carreras'] = marcador
-        processed_matches.append(pronostico_card)
+            # Eliminar duplicados previos e insertar registro actualizado
+            cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (target_date, partido_key))
+            
+            cursor.execute("""
+                INSERT INTO predictions (
+                    fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
+                    probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
+                    clima_info, momio_decimal, ev_label, estado, resultado_carreras
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
+                pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
+                pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
+                pronostico['stake_sugerido'], pronostico['clima_info'],
+                pronostico['momio_decimal'], pronostico['ev_label'],
+                estado, marcador
+            ))
 
-    conn.commit()
-    conn.close()
+            pronostico_card = dict(pronostico)
+            pronostico_card['estado'] = estado
+            pronostico_card['resultado_carreras'] = marcador
+            processed_matches.append(pronostico_card)
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"Error procesando SQLite: {e}")
 
     return jsonify({"partidos": processed_matches})
 
 @app.route("/api/metrics", methods=["GET"])
 def metrics_endpoint():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT estado FROM predictions WHERE estado IN ('GANADA', 'PERDIDA')")
-    rows = cursor.fetchall()
-    conn.close()
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT estado FROM predictions WHERE estado IN ('GANADA', 'PERDIDA')")
+        rows = cursor.fetchall()
+        conn.close()
 
-    total = len(rows)
-    if total == 0:
+        total = len(rows)
+        if total == 0:
+            return jsonify({
+                "precision": "0.0%",
+                "roi_promedio": "+0.0%",
+                "partidos_evaluados": 0,
+                "ganadas": 0,
+                "perdidas": 0
+            })
+
+        ganadas = sum(1 for r in rows if r[0] == 'GANADA')
+        perdidas = total - ganadas
+        precision = round((ganadas / total) * 100, 1)
+        ganancia_unidades = (ganadas * 0.85) - perdidas
+        roi = round((ganancia_unidades / total) * 100, 1)
+
+        return jsonify({
+            "precision": f"{precision}%",
+            "roi_promedio": f"+{roi}%" if roi >= 0 else f"{roi}%",
+            "partidos_evaluados": total,
+            "ganadas": ganadas,
+            "perdidas": perdidas
+        })
+    except Exception as e:
         return jsonify({
             "precision": "0.0%",
             "roi_promedio": "+0.0%",
@@ -125,44 +153,32 @@ def metrics_endpoint():
             "perdidas": 0
         })
 
-    ganadas = sum(1 for r in rows if r[0] == 'GANADA')
-    perdidas = total - ganadas
-    precision = round((ganadas / total) * 100, 1)
-
-    ganancia_unidades = (ganadas * 0.85) - perdidas
-    roi = round((ganancia_unidades / total) * 100, 1)
-
-    return jsonify({
-        "precision": f"{precision}%",
-        "roi_promedio": f"+{roi}%" if roi >= 0 else f"{roi}%",
-        "partidos_evaluados": total,
-        "ganadas": ganadas,
-        "perdidas": perdidas
-    })
-
 @app.route("/api/history", methods=["GET"])
 def history_endpoint():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("""
-        SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
-        FROM predictions 
-        ORDER BY fecha DESC, id DESC
-    """)
-    rows = cursor.fetchall()
-    conn.close()
-
     historial = []
-    for r in rows:
-        historial.append({
-            "fecha": r[0],
-            "partido": r[1],
-            "favorito_pronostico": r[2],
-            "momio_decimal": r[3],
-            "stake_sugerido": r[4],
-            "resultado_carreras": r[5],
-            "estado": r[6]
-        })
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
+            FROM predictions 
+            ORDER BY fecha DESC, id DESC
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+
+        for r in rows:
+            historial.append({
+                "fecha": r[0],
+                "partido": r[1],
+                "favorito_pronostico": r[2],
+                "momio_decimal": r[3],
+                "stake_sugerido": r[4],
+                "resultado_carreras": r[5],
+                "estado": r[6]
+            })
+    except Exception as e:
+        print(f"Error consultando historial: {e}")
 
     return jsonify({"historial": historial})
 
