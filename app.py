@@ -94,5 +94,20 @@ def chat_endpoint():
     except Exception as e:
         return jsonify({"response": f"Error en la consulta: {str(e)}"})
 
+
+@app.route("/api/clear-db", methods=["GET"])
+def clear_db_endpoint():
+    import sqlite3
+    try:
+        with sqlite3.connect("kbo_predictions.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("DROP TABLE IF EXISTS predictions")
+            conn.commit()
+        init_db()
+        return jsonify({"status": "Base de datos limpiada con éxito"})
+    except Exception as e:
+        return jsonify({"error": str(e)})
+    
+
 if __name__ == "__main__":
     app.run(debug=True)
