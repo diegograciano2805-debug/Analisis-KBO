@@ -252,4 +252,4 @@ function handleKeyPress(e) {
     if (e.key === 'Enter') sendMessage();
 }
 
-document.addEventListener('DOMContentLoaded', cargarPronosticos);
+document.addEventListener('DOMContentLoaded', cargarPronosticos); 

@@ -1,7 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import os
 import sqlite3
-import datetime
 import groq
 from scraper import fetch_live_kbo_data, fetch_kbo_final_scores
 from predict import generar_pronostico_partido
@@ -17,15 +16,22 @@ def init_db():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS historial (
+        CREATE TABLE IF NOT EXISTS predictions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             fecha TEXT,
             partido TEXT,
-            favorito TEXT,
-            momio REAL,
-            stake TEXT,
-            marcador TEXT,
-            estado TEXT,
+            equipo_local TEXT,
+            equipo_visitante TEXT,
+            favorito_pronostico TEXT,
+            probabilidad_local REAL,
+            recomendacion_ou TEXT,
+            recomendacion_runline TEXT,
+            stake_sugerido TEXT,
+            clima_info TEXT,
+            momio_decimal REAL,
+            ev_label TEXT,
+            estado TEXT DEFAULT 'PENDIENTE',
+            resultado_carreras TEXT DEFAULT 'N/A',
             UNIQUE(fecha, partido)
         )
     """)
@@ -43,7 +49,6 @@ def predict_endpoint():
     data = request.json or {}
     target_date = data.get("fecha", "2026-08-11")
 
-    # Extraer partidos programados para la fecha
     raw_matches = fetch_live_kbo_data(target_date)
 
     if not raw_matches:
@@ -55,7 +60,6 @@ def predict_endpoint():
             {"equipo_visitante": "Hanwha Eagles", "equipo_local": "Doosan Bears", "abridor_visitante": "Ryu Hyun-jin", "abridor_local": "Gwak Been"}
         ]
 
-    # Intentar obtener marcadores reales de internet (solo existen si el partido ya terminó)
     real_scores = fetch_kbo_final_scores(target_date)
 
     conn = sqlite3.connect(DB_FILE)
@@ -66,30 +70,39 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # Evaluar SOLO si hay un marcador real reportado por el scraper en internet
+        # Evaluar resultado si existe en la web
         if partido_key in real_scores:
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
             estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
             marcador = f"{score['away_runs']} - {score['home_runs']}"
-
-            # Guardar en base de datos para el Historial
-            cursor.execute("""
-                INSERT INTO historial (fecha, partido, favorito, momio, stake, marcador, estado)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(fecha, partido) DO UPDATE SET
-                    marcador = excluded.marcador,
-                    estado = excluded.estado
-            """, (target_date, partido_key, pronostico['favorito_pronostico'], pronostico['momio_decimal'], pronostico['stake_sugerido'], marcador, estado))
         else:
-            # Para partidos futuros o del día sin finalizar, NO inventar resultado
             estado = "PENDIENTE"
-            marcador = "vs"
+            marcador = "N/A"
 
-        # Las tarjetas principales NO muestran la insignia de ganada/perdida
-        pronostico['estado'] = estado
-        pronostico['resultado_carreras'] = marcador
-        processed_matches.append(pronostico)
+        # Guardar / Actualizar en SQLite en la tabla predictions
+        cursor.execute("""
+            INSERT INTO predictions (
+                fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
+                probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
+                clima_info, momio_decimal, ev_label, estado, resultado_carreras
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(fecha, partido) DO UPDATE SET
+                estado = excluded.estado,
+                resultado_carreras = excluded.resultado_carreras
+        """, (
+            target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
+            pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
+            pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
+            pronostico['stake_sugerido'], pronostico['clima_info'],
+            pronostico['momio_decimal'], pronostico['ev_label'],
+            estado, marcador
+        ))
+
+        # En la respuesta de las tarjetas de pantalla principal mantendremos el estado limpio
+        pronostico_card = dict(pronostico)
+        pronostico_card['estado'] = 'PENDIENTE'
+        processed_matches.append(pronostico_card)
 
     conn.commit()
     conn.close()
@@ -100,7 +113,7 @@ def predict_endpoint():
 def metrics_endpoint():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT estado FROM historial WHERE estado IN ('GANADA', 'PERDIDA')")
+    cursor.execute("SELECT estado FROM predictions WHERE estado IN ('GANADA', 'PERDIDA')")
     rows = cursor.fetchall()
     conn.close()
 
@@ -133,7 +146,12 @@ def metrics_endpoint():
 def history_endpoint():
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    cursor.execute("SELECT fecha, partido, favorito, momio, stake, marcador, estado FROM historial WHERE estado IN ('GANADA', 'PERDIDA') ORDER BY fecha DESC, id DESC")
+    cursor.execute("""
+        SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
+        FROM predictions 
+        WHERE estado IN ('GANADA', 'PERDIDA') 
+        ORDER BY fecha DESC, id DESC
+    """)
     rows = cursor.fetchall()
     conn.close()
 
