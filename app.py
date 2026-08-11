@@ -15,7 +15,6 @@ client = groq.Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 init_db()
 
 def get_korea_today_date():
-    """Obtiene la fecha actual en Corea del Sur (KST = UTC+9)."""
     kst = timezone(timedelta(hours=9))
     return datetime.now(kst).strftime("%Y-%m-%d")
 
@@ -47,13 +46,13 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # 1. Partido cancelado en la web
+        # 1. Detectar si la web indica que fue cancelado
         if match.get("estado_web") == "CANCELADO" or (partido_key in real_scores and real_scores[partido_key].get("cancelado")):
             estado = "CANCELADO"
             marcador = "SUSPENDIDO"
             upsert_prediction(target_date, partido_key, pronostico, estado, marcador)
 
-        # 2. Marcadores reales detectados por el scraper
+        # 2. Si la web tiene el resultado final real
         elif partido_key in real_scores and not real_scores[partido_key].get("cancelado"):
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
@@ -61,7 +60,7 @@ def predict_endpoint():
             marcador = f"{score['away_runs']} - {score['home_runs']}"
             upsert_prediction(target_date, partido_key, pronostico, estado, marcador)
 
-        # 3. Fecha concluidatoday o pasada (KST) sin marcador web -> Evaluacion automatica de respaldo
+        # 3. Si la fecha ya pasó o es hoy en Corea (KST) y el scraper no trajo datos reales
         elif target_date <= korea_today:
             seed_hash = int(hashlib.md5(f"{partido_key}{target_date}".encode()).hexdigest(), 16)
             away_runs = (seed_hash % 5) + 2
@@ -73,7 +72,7 @@ def predict_endpoint():
             marcador = f"{away_runs} - {home_runs}"
             upsert_prediction(target_date, partido_key, pronostico, estado, marcador)
 
-        # 4. Fecha futura estricta
+        # 4. Fechas futuras strictly
         else:
             estado = "PENDIENTE"
             marcador = "vs"

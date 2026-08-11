@@ -4,7 +4,7 @@ import sqlite3
 DB_PATH = os.path.join(os.path.dirname(__file__), "kbo_predictions.db")
 
 def init_db():
-    """Inicializa la tabla predictions con restricción única."""
+    """Inicializa la base de datos de manera segura."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -30,7 +30,7 @@ def init_db():
         conn.commit()
 
 def upsert_prediction(fecha, partido_key, pronostico, estado, marcador):
-    """Guarda o actualiza predicciones evitando bloqueos y código duplicado."""
+    """Guarda o actualiza registros asegurando que 'estado' y 'resultado_carreras' no se pierdan."""
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (fecha, partido_key))
@@ -51,13 +51,13 @@ def upsert_prediction(fecha, partido_key, pronostico, estado, marcador):
         conn.commit()
 
 def get_history():
-    """Obtiene el historial para la ventana modal."""
+    """Retorna todo el historial almacenado."""
+    init_db()
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
             SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
             FROM predictions 
-            WHERE estado IN ('GANADA', 'PERDIDA', 'CANCELADO')
             ORDER BY fecha DESC, id DESC
         """)
         rows = cursor.fetchall()
@@ -73,7 +73,8 @@ def get_history():
     } for r in rows]
 
 def get_metrics():
-    """Calcula la precisión y el ROI acumulado."""
+    """Calcula las métricas reales del historial acumulado."""
+    init_db()
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT estado FROM predictions WHERE estado IN ('GANADA', 'PERDIDA')")
