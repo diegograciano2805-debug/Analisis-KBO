@@ -1,8 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import os
 import sqlite3
-import hashlib
-from datetime import datetime, timezone, timedelta
 import groq
 from scraper import fetch_live_kbo_data, fetch_kbo_final_scores
 from predict import generar_pronostico_partido
@@ -42,10 +40,6 @@ def init_db():
 
 init_db()
 
-def get_korea_today_date():
-    kst = timezone(timedelta(hours=9))
-    return datetime.now(kst).strftime("%Y-%m-%d")
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -54,7 +48,6 @@ def index():
 def predict_endpoint():
     data = request.json or {}
     target_date = data.get("fecha", "2026-08-11")
-    korea_today = get_korea_today_date()
 
     raw_matches = fetch_live_kbo_data(target_date)
 
@@ -77,44 +70,53 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # 1. Verificar si el scraper detectó cancelación directa
+        # 1. Si el scraper detectó que el partido fue cancelado en la web
         if match.get("estado_web") == "CANCELADO" or (partido_key in real_scores and real_scores[partido_key].get("cancelado")):
             estado = "CANCELADO"
             marcador = "SUSPENDIDO"
+            
+            cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (target_date, partido_key))
+            cursor.execute("""
+                INSERT INTO predictions (
+                    fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
+                    probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
+                    clima_info, momio_decimal, ev_label, estado, resultado_carreras
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
+                pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
+                pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
+                pronostico['stake_sugerido'], pronostico['clima_info'],
+                pronostico['momio_decimal'], pronostico['ev_label'],
+                estado, marcador
+            ))
+
+        # 2. Si hay marcadores reales terminados en la web
         elif partido_key in real_scores and not real_scores[partido_key].get("cancelado"):
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
             estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
             marcador = f"{score['away_runs']} - {score['home_runs']}"
-        elif target_date <= korea_today:
-            seed_hash = int(hashlib.md5(f"{partido_key}{target_date}".encode()).hexdigest(), 16)
-            away_runs = (seed_hash % 5) + 2
-            home_runs = ((seed_hash >> 3) % 5) + 1
-            if away_runs == home_runs:
-                home_runs += 1
-            ganador_real = pronostico['equipo_local'] if home_runs > away_runs else pronostico['equipo_visitante']
-            estado = "GANADA" if ganador_real == pronostico['favorito_pronostico'] else "PERDIDA"
-            marcador = f"{away_runs} - {home_runs}"
+
+            cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (target_date, partido_key))
+            cursor.execute("""
+                INSERT INTO predictions (
+                    fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
+                    probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
+                    clima_info, momio_decimal, ev_label, estado, resultado_carreras
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
+                pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
+                pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
+                pronostico['stake_sugerido'], pronostico['clima_info'],
+                pronostico['momio_decimal'], pronostico['ev_label'],
+                estado, marcador
+            ))
         else:
+            # 3. Para partidos futuros, NO se guarda nada falso en la base de datos
             estado = "PENDIENTE"
             marcador = "vs"
-
-        # Guardar / Actualizar en BD
-        cursor.execute("DELETE FROM predictions WHERE fecha = ? AND partido = ?", (target_date, partido_key))
-        cursor.execute("""
-            INSERT INTO predictions (
-                fecha, partido, equipo_local, equipo_visitante, favorito_pronostico,
-                probabilidad_local, recomendacion_ou, recomendacion_runline, stake_sugerido,
-                clima_info, momio_decimal, ev_label, estado, resultado_carreras
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            target_date, partido_key, pronostico['equipo_local'], pronostico['equipo_visitante'],
-            pronostico['favorito_pronostico'], pronostico['probabilidad_local'],
-            pronostico['recomendacion_ou'], pronostico['recomendacion_runline'],
-            pronostico['stake_sugerido'], pronostico['clima_info'],
-            pronostico['momio_decimal'], pronostico['ev_label'],
-            estado, marcador
-        ))
 
         card_item = dict(pronostico)
         card_item['estado'] = estado
@@ -165,6 +167,7 @@ def history_endpoint():
     cursor.execute("""
         SELECT fecha, partido, favorito_pronostico, momio_decimal, stake_sugerido, resultado_carreras, estado 
         FROM predictions 
+        WHERE estado IN ('GANADA', 'PERDIDA', 'CANCELADO')
         ORDER BY fecha DESC, id DESC
     """)
     rows = cursor.fetchall()
