@@ -1,5 +1,6 @@
 from flask import Flask, render_template, request, jsonify
 import os
+import sqlite3
 import groq
 from scraper import fetch_live_kbo_data, fetch_kbo_final_scores
 from predict import generar_pronostico_partido
@@ -39,13 +40,13 @@ def predict_endpoint():
         pronostico = generar_pronostico_partido(match)
         partido_key = f"{pronostico['equipo_visitante']} vs {pronostico['equipo_local']}"
         
-        # 1. Si la web confirma que fue cancelado por lluvia o clima
+        # 1. Si la web confirma cancelación por clima
         if match.get("estado_web") == "CANCELADO" or (partido_key in real_scores and real_scores[partido_key].get("cancelado")):
             estado = "CANCELADO"
             marcador = "SUSPENDIDO"
             upsert_prediction(target_date, partido_key, pronostico, estado, marcador)
 
-        # 2. ÚNICAMENTE se guarda e incluye en historial si existe un marcador REAL en internet
+        # 2. ÚNICAMENTE se guarda si el scraper extrajo un marcador final REAL de la web
         elif partido_key in real_scores and not real_scores[partido_key].get("cancelado"):
             score = real_scores[partido_key]
             ganador_real = score["ganador_real"]
@@ -53,7 +54,7 @@ def predict_endpoint():
             marcador = f"{score['away_runs']} - {score['home_runs']}"
             upsert_prediction(target_date, partido_key, pronostico, estado, marcador)
 
-        # 3. Si no hay marcador real en internet (sea hoy, pasado o futuro), queda PENDIENTE y NO entra al historial
+        # 3. Todo lo demás se queda como PENDIENTE sin tocar el historial
         else:
             estado = "PENDIENTE"
             marcador = "vs"
@@ -72,6 +73,19 @@ def metrics_endpoint():
 @app.route("/api/history", methods=["GET"])
 def history_endpoint():
     return jsonify({"historial": get_history()})
+
+@app.route("/api/clear-db", methods=["POST"])
+def clear_db():
+    """Limpia la base de datos mediante un botón directo en la interfaz."""
+    try:
+        with sqlite3.connect("kbo_predictions.db") as conn:
+            cursor = conn.cursor()
+            cursor.execute("DROP TABLE IF EXISTS predictions")
+            conn.commit()
+        init_db()
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 @app.route("/api/chat", methods=["POST"])
 def chat_endpoint():
@@ -93,21 +107,6 @@ def chat_endpoint():
         return jsonify({"response": response.choices[0].message.content})
     except Exception as e:
         return jsonify({"response": f"Error en la consulta: {str(e)}"})
-
-
-@app.route("/api/clear-db", methods=["GET"])
-def clear_db_endpoint():
-    import sqlite3
-    try:
-        with sqlite3.connect("kbo_predictions.db") as conn:
-            cursor = conn.cursor()
-            cursor.execute("DROP TABLE IF EXISTS predictions")
-            conn.commit()
-        init_db()
-        return jsonify({"status": "Base de datos limpiada con éxito"})
-    except Exception as e:
-        return jsonify({"error": str(e)})
-    
 
 if __name__ == "__main__":
     app.run(debug=True)

@@ -260,4 +260,20 @@ function handleKeyPress(e) {
     if (e.key === 'Enter') sendMessage();
 }
 
+
+async function vaciarHistorialBD() {
+    if (confirm("¿Seguro que deseas vaciar el historial de la base de datos?")) {
+        try {
+            const res = await fetch('/api/clear-db', { method: 'POST' });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                alert("Base de datos reiniciada correctamente.");
+                await cargarPronosticos();
+            }
+        } catch (e) {
+            console.error("Error al reiniciar BD:", e);
+        }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', cargarPronosticos);
